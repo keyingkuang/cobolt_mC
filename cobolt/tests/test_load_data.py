@@ -23,7 +23,6 @@ def load_test_data():
         dataset_name="single_b", feature_name="b")
     return ja, jb, sa, sb
 
-
 class TestSingleData:
     def test_construction(self):
         feature_name = "a"
@@ -36,6 +35,7 @@ class TestSingleData:
         assert isinstance(feature[feature_name], np.ndarray)
         assert isinstance(barcode, np.ndarray)
         assert isinstance(count[feature_name], scipy.sparse.csr.csr_matrix)
+
 
     def test_filter_features(self):
         feature_name = "a"
@@ -63,8 +63,8 @@ class TestSingleData:
         feature_name = "a"
         ja, jb, sa, sb = load_test_data()
         ja.filter_barcode(cells=[
-            '09A_CAGCCCCGCCTT',
-            '09A_CGCCTACCATGA'
+            'joint~09A_CAGCCCCGCCTT',
+            'joint~09A_CGCCTACCATGA'
         ])
         count, feature, barcode = ja.get_data()
         assert count[feature_name].shape == (2, 100)
