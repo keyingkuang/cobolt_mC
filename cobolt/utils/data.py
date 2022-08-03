@@ -28,6 +28,7 @@ class SingleData(object):
                  dataset_name: str,
                  feature: np.ndarray,
                  count: sparse.csr.csr_matrix,
+                 coverage: sparse.csr.csr_matrix,
                  barcode: np.ndarray):
         self.feature_name = feature_name
         self.dataset_name = dataset_name
@@ -36,9 +37,12 @@ class SingleData(object):
             print("Removing duplicated features.")
             feature = unique_feature
             count = count[:, feature_idx]
+        if coverage is not None:
+            coverage = coverage[:, feature_idx]
         self.feature = feature
         self.barcode = np.array([dataset_name + "~" + x for x in barcode])
         self.count = count
+        self.coverage = coverage
         self.is_valid()
 
     @classmethod
@@ -89,16 +93,30 @@ class SingleData(object):
         -------
         A SingleOmic object
         """
-        count = io.mmread(os.path.join(path, count_file)).T.tocsr().astype(float)
-        feature = pd.read_csv(
-            os.path.join(path, feature_file),
-            header=feature_header, usecols=[feature_column]
-        )[0].values.astype('str')
-        barcode = pd.read_csv(
-            os.path.join(path, barcode_file),
-            header=barcode_header, usecols=[barcode_column]
-        )[0].values.astype('str')
-        return cls(feature_name, dataset_name, feature, count, barcode)
+        if feature_name is not "Methy":
+            count = io.mmread(os.path.join(path, count_file)).T.tocsr().astype(float)
+            feature = pd.read_csv(
+               os.path.join(path, feature_file),
+               header=feature_header, usecols=[feature_column]
+            )[0].values.astype('str')
+            barcode = pd.read_csv(
+               os.path.join(path, barcode_file),
+               header=barcode_header, usecols=[barcode_column]
+            )[0].values.astype('str')
+            coverage = None
+            return cls(feature_name, dataset_name, feature, count, coverage, barcode)
+        else:
+            count = io.mmread(os.path.join(path, "mc", count_file)).T.tocsr().astype(float)  ##
+            feature = pd.read_csv(
+                os.path.join(path, "mc", feature_file),
+                header=feature_header, usecols=[feature_column]
+            )[0].values.astype('str')
+            barcode = pd.read_csv(
+                os.path.join(path, "mc", barcode_file),
+                header=barcode_header, usecols=[barcode_column]
+            )[0].values.astype('str')  ##
+            coverage = io.mmread(os.path.join(path, "cov", count_file)).T.tocsr().astype(float)  ##
+            return cls(feature_name, dataset_name, feature, count, coverage, barcode)
 
     def __getitem__(self, items):
         x, y = items
