@@ -163,7 +163,7 @@ class SingleData(object):
         if self.count.shape[0] != self.barcode.shape[0]:
             raise ValueError("The dimensions of the count matrix and the barcode array are not consistent.")
         if self.count.shape[1] != self.feature.shape[0]:
-            raise ValueError("The dimensions of the count matrix and the barcode array are not consistent.")
+            raise ValueError("The dimensions of the count matrix and the feature array are not consistent.")
 
 
 class MultiData(object):
