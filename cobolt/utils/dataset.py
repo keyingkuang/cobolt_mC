@@ -48,6 +48,7 @@ class MultiomicDataset(torch.utils.data.Dataset):
 
     @classmethod
     def from_singledata(cls, *single_data):
+        """ create a MultiomicDataset from *Singledata """
         return cls(MultiData(*single_data))
 
     def _get_unique_barcode(self):
@@ -55,6 +56,7 @@ class MultiomicDataset(torch.utils.data.Dataset):
         return np.unique(barcode)
 
     def _get_dataset(self):
+        """ get paired [key: barcode - value: dataset] """
         dt_dict = {}
         for om in self.omic:
             dataset_names = [self.dt[om]['dataset_name'][int(i)] for i in self.dt[om]['dataset']]
@@ -66,9 +68,18 @@ class MultiomicDataset(torch.utils.data.Dataset):
         return dt_dict
 
     def get_barcode(self):
+        """ return the concatenated unique barcodes """
         return self.barcode
 
     def get_comb_idx(self, omic_combn):
+        """
+        get IDs for different combinations of omics
+
+        Parameters
+        ----------
+        omic_combn: a vector of length {# of features} with values TRUE/FALSE indicating which omic to include
+
+        """
         if not any(omic_combn):
             raise ValueError("Omics combination can not be all False.")
         if len(omic_combn) != len(self.get_feature_shape()):
