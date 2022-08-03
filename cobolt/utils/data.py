@@ -153,6 +153,7 @@ class SingleData(object):
         self.feature = np.array(feature)
 
     def get_data(self):
+        # key of count and feature is the feature_name
         return {self.feature_name: self.count}, {self.feature_name: self.feature}, self.barcode
 
     def get_dataset_name(self):
@@ -192,6 +193,17 @@ class MultiData(object):
 
 
 def merge_modality(dt):
+    """
+    Merge each modality of data after simply appending *SingleData together
+
+    Returns
+    -------
+    barcode: directly concatenate together
+    batch: change dataset names into integers (0,1,2,...)
+    feature: keep the common features
+    counts: stack count matrices horizontally (with common features as
+    columns)
+    """
     batch = [np.zeros(x.shape) + i for i, x in enumerate(dt['barcode'])]
     batch = np.concatenate(batch)
     barcode = np.concatenate(dt['barcode'])
