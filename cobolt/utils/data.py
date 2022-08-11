@@ -33,12 +33,12 @@ class SingleData(object):
         self.feature_name = feature_name
         self.dataset_name = dataset_name
         unique_feature, feature_idx = np.unique(feature, return_index=True)
-        if len(feature) != len(unique_feature):
-            print("Removing duplicated features.")
-            feature = unique_feature
-            count = count[:, feature_idx]
-        if coverage is not None:
-            coverage = coverage[:, feature_idx]
+ #       if len(feature) != len(unique_feature):
+ #           print("Removing duplicated features.")
+ #           feature = unique_feature
+ #           count = count[:, feature_idx]
+ #           if coverage is not None:
+ #              coverage = coverage[:, feature_idx]
         self.feature = feature
         self.barcode = np.array([dataset_name + "~" + x for x in barcode])
         self.count = count
@@ -163,6 +163,9 @@ class SingleData(object):
         self.feature = self.feature[bool_features]
 
     def rename_features(self, feature):
+        """
+        returning unique features and count/coverage matrices with unique features
+        """
         unique_feature, feature_idx = np.unique(feature, return_index=True)
         if len(feature) != len(unique_feature):
             print("Removing duplicated features.")
