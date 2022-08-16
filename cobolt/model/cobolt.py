@@ -77,6 +77,7 @@ class Cobolt:
         self.hidden_dims = [128, 64] if hidden_dims is None else hidden_dims
         self.model = CoboltModel(
             in_channels=dataset.get_feature_shape(),
+            omic = dataset.omic, ###
             hidden_dims=hidden_dims,
             n_dataset=dataset.n_dataset,
             latent_dim=n_latent,
@@ -124,7 +125,9 @@ class Cobolt:
                 this_size = len(this_idx)
                 for x in dt_loader:
                     # Forward pass
-                    x = [[x_i.to(self.device) if x_i is not None else None for x_i in y] for y in x]
+                    x0 = [[x_i.to(self.device) if x_i is not None else None for x_i in y] for y in x[0:3]]
+                    x0.append(x[3])
+                    x = x0
                     latent_loss, recon_loss = self.model(x, elbo_combn=[omics])
                     # Backprop and optimize
                     loss = annealing_factor * latent_loss + recon_loss
@@ -174,7 +177,9 @@ class Cobolt:
         )
         latent = []
         for i, x in enumerate(dl):
-            x = [[x_i.to(self.device) if x_i is not None else None for x_i in y] for y in x]
+            x0 = [[x_i.to(self.device) if x_i is not None else None for x_i in y] for y in x[0:3]]
+            x0.append(x[3])
+            x = x0
             if what == "latent":
                 latent += [self.model.get_latent(x, elbo_bool=omic_combn)]
             elif what == "topic_prop":
@@ -480,8 +485,24 @@ class Cobolt:
         self.barcode = self.dataset.get_barcode()
         self.train_barcode = self.barcode[self.train_idx]
 
-
 def collate_wrapper(batch, omic_combn):
+    dataset = [x[1] for x in batch]
+    cov = [x[2] for x in batch] ##
+    ifmethy = [x[3] for x in batch] ##
+    batch = [x[0] for x in batch] ## batch0
+    dataset = [torch.tensor(list(x)) if include else None
+               for x, include in zip(zip(*dataset), omic_combn)]
+    batch = [torch.from_numpy(sparse.vstack(x).toarray()).float() if include else None
+             for x, include in zip(zip(*batch), omic_combn)] ##batch0
+    #ifmethy = [torch.from_numpy(sparse.vstack(x).toarray()).float() if include else None
+    #         for x, include in zip(zip(*ifmethy), omic_combn)] ##batch0
+    cov = [torch.from_numpy(sparse.vstack(x).toarray()).float() if include else None
+             for x, include in zip(zip(*cov), ifmethy[0])] ##batch0
+    ifmethy = ifmethy[0]
+#   ifmethy = [1 if im else 0 for im in ifmethy]
+    return batch, dataset, cov, ifmethy #delete dataset
+
+def collate_wrapper1(batch, omic_combn):
     dataset = [x[1] for x in batch]
     batch = [x[0] for x in batch]
     dataset = [torch.tensor(list(x)) if include else None

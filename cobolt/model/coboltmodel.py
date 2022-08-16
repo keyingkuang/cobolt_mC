@@ -14,6 +14,13 @@ from torch.distributions import Normal
 
 
 def xavier_init(fan_in, fan_out, constant=1):
+    """
+    Xavier Initialization
+
+    return
+    ----------
+    weight initialization with dimensions [fan_in, fan_out]
+    """
     low = -constant * np.sqrt(6.0 / (fan_in + fan_out))
     high = constant * np.sqrt(6.0 / (fan_in + fan_out))
     return (low - high) * torch.rand(fan_in, fan_out) + high
@@ -23,6 +30,7 @@ class CoboltModel(nn.Module):
 
     def __init__(self,
                  in_channels: List,
+                 omic: List,
                  latent_dim: int,
                  n_dataset: List,
                  hidden_dims: List = None,
@@ -32,7 +40,8 @@ class CoboltModel(nn.Module):
                  loss_type: str = 'B',
                  intercept_adj: bool = True,
                  slope_adj: bool = True,
-                 log: bool = True):
+                 log: bool = True,
+                 elbo_combn: list = None):
         super(CoboltModel, self).__init__()
 
         self.latent_dim = latent_dim
@@ -49,6 +58,11 @@ class CoboltModel(nn.Module):
         self.intercept_adj = intercept_adj
         self.slope_adj = slope_adj
         self.log = log
+        self.omic = omic
+        """
+        needs omic because want to know which is methy 
+        also remember to __init__ omic and input omic when calling coboltmodel
+        """
 
         self.beta = nn.ParameterList()
         for in_ch in in_channels:
@@ -74,7 +88,14 @@ class CoboltModel(nn.Module):
         self.encoder = nn.ModuleList()
         self.fc_mu = nn.ModuleList()
         self.fc_var = nn.ModuleList()
-        for in_ch in in_channels:
+
+        omic_bool = [x=="Methy" for x in self.omic]
+        in_channels2 =[c_in*2 if o_bool else c_in for o_bool, c_in in zip(omic_bool, in_channels)]
+        """
+        input channels for the encoder would be 2 times for methylation
+        """
+
+        for in_ch in in_channels2:
             # Build Encoder
             modules = []
             current_in = in_ch
@@ -99,7 +120,7 @@ class CoboltModel(nn.Module):
         eps = torch.randn_like(std)
         return eps * std + mu
 
-    def encode(self, x: List):
+    def encode(self, x: List, cov: List, ifmethy: List):
         batch_size = [x_i.size(0) for x_i in x if x_i is not None][0]
         qz_m, qz_logv = prior_expert(self.mu2, self.var2, batch_size)
         qz_m = qz_m.to(self.device)
@@ -121,7 +142,7 @@ class CoboltModel(nn.Module):
         return mu, log_var
 
     def forward(self, x: List, elbo_combn=None):
-        x, dataset = x
+        x, dataset, cov, ifmethy = x ##
         n_modality = len(x)
         if elbo_combn is None:
             elbo_combn = \
@@ -129,7 +150,7 @@ class CoboltModel(nn.Module):
                  for i in itertools.product([False, True], repeat=n_modality)
                  if sum(i) != 0]
 
-        mu, log_var = self.encode(x)
+        mu, log_var = self.encode(x, cov, ifmethy)
         recon_loss = 0
         latent_loss = 0
         for elbo_bool in elbo_combn:
@@ -166,9 +187,9 @@ class CoboltModel(nn.Module):
 
     @torch.no_grad()
     def get_topic_prop(self, x, elbo_bool=None):
-        x, dataset = x
+        x, dataset, cov, ifmethy = x
         # TODO: This is not the posterior mean of \theta
-        mu, log_var = self.encode(x)
+        mu, log_var = self.encode(x, cov, ifmethy)
         if elbo_bool is None:
             elbo_bool = [True]*len(x)
         mu_subset, var = self.experts(mu[[True] + elbo_bool],
@@ -177,8 +198,8 @@ class CoboltModel(nn.Module):
 
     @torch.no_grad()
     def get_latent(self, x, elbo_bool=None):
-        x, dataset = x
-        mu, log_var = self.encode(x)
+        x, dataset, cov, ifmethy = x
+        mu, log_var = self.encode(x, cov, ifmethy)
         if elbo_bool is None:
             elbo_bool = [True]*len(x)
         mu_subset, var = self.experts(mu[[True] + elbo_bool],
@@ -186,8 +207,8 @@ class CoboltModel(nn.Module):
         return mu_subset.cpu().numpy()
 
     @torch.no_grad()
-    def get_posterior(self, x, elbo_bool=None):
-        mu, log_var = self.encode(x)
+    def get_posterior(self, x, cov, ifmethy, elbo_bool=None):
+        mu, log_var = self.encode(x, cov, ifmethy)
         if elbo_bool is None:
             elbo_bool = [True]*len(x)
         mu_subset, var = self.experts(mu[[True] + elbo_bool],
@@ -195,14 +216,14 @@ class CoboltModel(nn.Module):
         return mu_subset, var
 
     @torch.no_grad()
-    def get_marginal_likelihood(self, x, elbo_bool=None, rep=100):
+    def get_marginal_likelihood(self, x, cov, ifmethy, elbo_bool=None, rep=100):
         """
         Reference scVI
         """
         if elbo_bool is None:
             elbo_bool = [True]*len(x)
 
-        mu, log_var = self.encode(x)
+        mu, log_var = self.encode(x, cov, ifmethy)
         mu_subset, var = self.experts(mu[[True] + elbo_bool],
                                       log_var[[True] + elbo_bool])
 
