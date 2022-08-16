@@ -22,4 +22,3 @@ class TestModel:
         assert clusters.shape == (300,)
         clusters, bcd = model.get_clusters(return_barcode=True)
         assert (barcode == bcd).all()
-hen
