@@ -175,6 +175,41 @@ class CoboltModel(nn.Module):
         return mu, log_var
 
     def forward(self, x: List, elbo_combn=None):
+        x, dataset, cov, ifmethy = x ###
+        n_modality = len(x)
+        if elbo_combn is None:
+            elbo_combn = \
+                [list(i)
+                 for i in itertools.product([False, True], repeat=n_modality)
+                 if sum(i) != 0]
+
+        mu, log_var = self.encode(x, cov, ifmethy)  ###TODO: adding cov to encoder if methy
+        recon_loss = 0
+        latent_loss = 0
+        for elbo_bool in elbo_combn: ## summing up loss over different combination of modalities
+            mu_subset, var = self.experts(mu[[True] + elbo_bool],
+                                          log_var[[True] + elbo_bool])
+            z = self.reparameterize(mu_subset, var)
+            beta_subset = [self.beta[i] for i, j in enumerate(elbo_bool) if j]
+            x_subset = [x[i] for i, j in enumerate(elbo_bool) if j]
+            beta_dataset_subset = [self.beta_dataset[i] for i, j in enumerate(elbo_bool) if j]
+            beta_dataset_mtp_subset = [self.beta_dataset_mtp[i] for i, j in enumerate(elbo_bool) if j]
+            dataset_subset = [dataset[i] for i, j in enumerate(elbo_bool) if j]
+            n_fac = [self.n_dataset[i] for i, j in enumerate(elbo_bool) if j]
+            cov_subset = [i if j else None for i,j in enumerate(ifmethy) ] ###
+            cov_subset = [cov[co] if co is not None else None for co, j in zip(cov_subset, elbo_bool) if j] ###
+            ## summing up loss over modalities
+            for beta_i, x_i,  beta_dt_i, beta_dt_mtp_i, dt_i, n_f, cov_i in \
+            zip(beta_subset, x_subset, beta_dataset_subset, beta_dataset_mtp_subset, dataset_subset, n_fac, cov_subset): ###
+                slope_adj = torch.matmul(fac_to_mat(dt_i, n_f), beta_dt_mtp_i) if self.intercept_adj else 0 ### BUG
+                intercept_adj = torch.matmul(fac_to_mat(dt_i, n_f), beta_dt_i) if self.slope_adj else 0 ### BUG
+                if cov_i is None: ###
+                  recon_loss += self.recon_loss_count(x_i, beta_i, slope_adj, intercept_adj, z) ###
+                else:
+                  recon_loss += self.recon_loss_binom(x_i, cov_i, beta_i, slope_adj, intercept_adj, z) ###
+            latent_loss += self.latent_loss(mu_subset, var, self.mu2, self.var2)
+        return latent_loss, recon_loss
+    def forward2(self, x: List, elbo_combn=None):
         x, dataset, cov, ifmethy = x ##
         n_modality = len(x)
         if elbo_combn is None:
@@ -214,6 +249,17 @@ class CoboltModel(nn.Module):
             torch.log(var1) - torch.log(var0))
         return latent_loss
 
+    def recon_loss_binom(self, x, cov, beta, slope, intercept, latent):
+        logitp = torch.matmul(latent, beta) * (slope + 1) + intercept
+        p = torch.exp(logitp)/(1+torch.exp(logitp))
+        loss = - torch.sum(x*torch.log(p)+(cov-x)*torch.log(1-p))
+        return(loss)
+    def recon_loss_count(self, x, beta, slope, intercept, latent):
+        loss = - torch.sum( ## x_i and the softmatrix are of same dimensions,
+                    x * torch.log(torch.softmax(
+                        torch.matmul(torch.softmax(latent, dim=1), beta) * (slope + 1) + intercept,
+                        dim=1)))
+        return(loss)
     @torch.no_grad()
     def get_beta(self):
         return [beta.cpu().numpy().T for beta in self.beta]
