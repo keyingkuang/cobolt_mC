@@ -121,6 +121,41 @@ class CoboltModel(nn.Module):
         return eps * std + mu
 
     def encode(self, x: List, cov: List, ifmethy: List):
+            x1 = list(x)
+            batch_size = [x_i.size(0) for x_i in x1 if x_i is not None][0]  ### real batch sizes from the DataLoader
+            qz_m, qz_logv = prior_expert(self.mu2, self.var2, batch_size)
+            qz_m = qz_m.to(self.device)
+            qz_logv = qz_logv.to(self.device)
+            mu = [qz_m]
+            log_var = [qz_logv]
+            t = 0
+            for x_i, cov_i in zip(x1, cov):
+                if x_i is not None:
+                    if cov_i is not None:
+                        #   comb = torch.cat((x_i[0], cov_i[0]))
+                        comb = []
+                        for xi, covi in zip(x_i, cov_i):
+                            combi = torch.cat((xi, covi))
+                            comb += [combi]
+                        #      comb = torch.cat((comb, combi), dim = -1)
+                        comb = torch.stack(comb)
+                        x1[t] = comb
+                t += 1
+            for x_i, encoder, fc_mu, fc_var in zip(x1, self.encoder, self.fc_mu, self.fc_var):
+                if x_i is not None:
+                    if self.log:
+                        x_i = torch.log(x_i + 1)  ### methylation should not take log?????? since there are cov and mc
+                    result = encoder(x_i)
+                    mu += [fc_mu(result).unsqueeze(0)]
+                    log_var += [fc_var(result).unsqueeze(0)]
+                else:
+                    mu += [qz_m]  # this is a placeholder
+                    log_var += [qz_logv]  # won't be used b.c. elbo_combn
+            mu = torch.cat(mu, dim=0)
+            log_var = torch.cat(log_var, dim=0)
+            return mu, log_var
+
+    def encode1(self, x: List, cov: List, ifmethy: List):
         x1 = list(x)
         batch_size = [x_i.size(0) for x_i in x1 if x_i is not None][0]  ### real batch sizes from the DataLoader
         qz_m, qz_logv = prior_expert(self.mu2, self.var2, batch_size)
@@ -140,7 +175,7 @@ class CoboltModel(nn.Module):
                 comb = torch.stack(comb)
                 x1[t] = comb
             t += 1
-        for x_i, encoder, fc_mu, fc_var in zip(x, self.encoder, self.fc_mu, self.fc_var):
+        for x_i, encoder, fc_mu, fc_var in zip(x1, self.encoder, self.fc_mu, self.fc_var):
             if x_i is not None:
                 if self.log:
                     x_i = torch.log(x_i + 1)  ### methylation should not take log?????? since there are cov and mc
