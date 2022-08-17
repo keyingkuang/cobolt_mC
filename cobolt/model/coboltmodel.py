@@ -121,14 +121,15 @@ class CoboltModel(nn.Module):
         return eps * std + mu
 
     def encode(self, x: List, cov: List, ifmethy: List):
-        batch_size = [x_i.size(0) for x_i in x if x_i is not None][0]  ### real batch sizes from the DataLoader
+        x1 = list(x)
+        batch_size = [x_i.size(0) for x_i in x1 if x_i is not None][0]  ### real batch sizes from the DataLoader
         qz_m, qz_logv = prior_expert(self.mu2, self.var2, batch_size)
         qz_m = qz_m.to(self.device)
         qz_logv = qz_logv.to(self.device)
         mu = [qz_m]
         log_var = [qz_logv]
         t = 0
-        for x_i, cov_i in zip(x, cov):
+        for x_i, cov_i in zip(x1, cov):
             if cov_i is not None:
                 #   comb = torch.cat((x_i[0], cov_i[0]))
                 comb = []
@@ -137,7 +138,7 @@ class CoboltModel(nn.Module):
                     comb += [combi]
                 #      comb = torch.cat((comb, combi), dim = -1)
                 comb = torch.stack(comb)
-                x[t] = comb
+                x1[t] = comb
             t += 1
         for x_i, encoder, fc_mu, fc_var in zip(x, self.encoder, self.fc_mu, self.fc_var):
             if x_i is not None:
