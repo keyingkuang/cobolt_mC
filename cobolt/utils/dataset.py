@@ -24,13 +24,26 @@ class MultiomicDataset(torch.utils.data.Dataset):
         return self.barcode.shape[0]
 
     def __getitem__(self, index: int):
-        """Generates one sample of data"""
+        """
+        Generates one sample of data
+        ----------------------------
+        dat : a list storing the counts for each of the omic
+        dataset: a list storing the respective dataset code
+        ifcov: a list storing TRUE/FALSE values indicating if/not this omic is contained in the cells selected AND this omic is methylation
+        cov: a list storing the coverages for each of the omic
+        """
+
         b = self.barcode[index]
         dat = [self.dt[om]['counts'][self.barcode_in_om[om][b]] if self.barcode_in_om[om][b] is not None else None
                for om in self.omic]
         dataset = [self.dt[om]['dataset'][self.barcode_in_om[om][b]] if self.barcode_in_om[om][b] is not None else None
                for om in self.omic]
-        return dat, dataset
+        ifcov = [x=="Methy" for x in self.omic]
+        datasettf = [x is not None for x in dataset]
+        ifcov = [x&dat for x, dat in zip(ifcov, datasettf)]
+        cov = [self.dt[om]['coverage'][self.barcode_in_om[om][b]] if ic else None ###
+               for om,ic in zip(self.omic, ifcov)]
+        return dat, dataset, cov, ifcov
 
     def __str__(self):
         n_modality = len(self.omic)
@@ -48,7 +61,6 @@ class MultiomicDataset(torch.utils.data.Dataset):
 
     @classmethod
     def from_singledata(cls, *single_data):
-        """ create a MultiomicDataset from *Singledata """
         return cls(MultiData(*single_data))
 
     def _get_unique_barcode(self):
@@ -56,7 +68,6 @@ class MultiomicDataset(torch.utils.data.Dataset):
         return np.unique(barcode)
 
     def _get_dataset(self):
-        """ get paired [key: barcode - value: dataset] """
         dt_dict = {}
         for om in self.omic:
             dataset_names = [self.dt[om]['dataset_name'][int(i)] for i in self.dt[om]['dataset']]
@@ -68,18 +79,9 @@ class MultiomicDataset(torch.utils.data.Dataset):
         return dt_dict
 
     def get_barcode(self):
-        """ return the concatenated unique barcodes """
         return self.barcode
 
     def get_comb_idx(self, omic_combn):
-        """
-        get IDs for different combinations of omics
-
-        Parameters
-        ----------
-        omic_combn: a vector of length {# of features} with values TRUE/FALSE indicating which omic to include
-
-        """
         if not any(omic_combn):
             raise ValueError("Omics combination can not be all False.")
         if len(omic_combn) != len(self.get_feature_shape()):
