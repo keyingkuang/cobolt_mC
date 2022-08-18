@@ -1,5 +1,3 @@
-
-
 from scipy import io, sparse
 import os
 import pandas as pd
@@ -20,6 +18,8 @@ class SingleData(object):
         Array of length F containing feature names
     count
         Matrix of dimension BxF containing data counts
+    coverage
+        Matrix of dimension BXF containing coverage for methylation data
     barcode
         Array of length B containing cell barcode
     """
@@ -33,17 +33,15 @@ class SingleData(object):
         self.feature_name = feature_name
         self.dataset_name = dataset_name
         unique_feature, feature_idx = np.unique(feature, return_index=True)
- #       if len(feature) != len(unique_feature):
- #           print("Removing duplicated features.")
- #           feature = unique_feature
- #           count = count[:, feature_idx]
- #           if coverage is not None:
- #              coverage = coverage[:, feature_idx]
+        if len(feature) != len(unique_feature):
+            print("Removing duplicated features.")
+            feature = unique_feature
+            count = count[:, feature_idx]
         self.feature = feature
         self.barcode = np.array([dataset_name + "~" + x for x in barcode])
         self.count = count
         self.coverage = coverage
-        self.is_valid()
+        self.is_valid() ## TODO: is_valid not compatible with __get_item__[i] i:int
 
     @classmethod
     def from_file(cls,
@@ -94,34 +92,39 @@ class SingleData(object):
         A SingleOmic object
         """
         if feature_name is not "Methy":
-            count = io.mmread(os.path.join(path, count_file)).T.tocsr().astype(float)
-            feature = pd.read_csv(
-               os.path.join(path, feature_file),
-               header=feature_header, usecols=[feature_column]
-            )[0].values.astype('str')
-            barcode = pd.read_csv(
-               os.path.join(path, barcode_file),
-               header=barcode_header, usecols=[barcode_column]
-            )[0].values.astype('str')
-            coverage = None
-            return cls(feature_name, dataset_name, feature, count, coverage, barcode)
+          count = io.mmread(os.path.join(path, count_file)).T.tocsr().astype(float)
+          feature = pd.read_csv(
+              os.path.join(path, feature_file),
+              header=feature_header, usecols=[feature_column]
+          )[0].values.astype('str')
+          barcode = pd.read_csv(
+              os.path.join(path, barcode_file),
+              header=barcode_header, usecols=[barcode_column]
+          )[0].values.astype('str')
+          coverage = None
+          return cls(feature_name, dataset_name, feature, count, coverage, barcode)
         else:
-            count = io.mmread(os.path.join(path, "mc", count_file)).T.tocsr().astype(float)  ##
-            feature = pd.read_csv(
-                os.path.join(path, "mc", feature_file),
-                header=feature_header, usecols=[feature_column]
-            )[0].values.astype('str')
-            barcode = pd.read_csv(
-                os.path.join(path, "mc", barcode_file),
-                header=barcode_header, usecols=[barcode_column]
-            )[0].values.astype('str')  ##
-            coverage = io.mmread(os.path.join(path, "cov", count_file)).T.tocsr().astype(float)  ##
-            return cls(feature_name, dataset_name, feature, count, coverage, barcode)
+          count = io.mmread(os.path.join(path, "mc", count_file)).T.tocsr().astype(float)##
+          feature = pd.read_csv(
+            os.path.join(path, "mc", feature_file),
+            header=feature_header, usecols=[feature_column]
+          )[0].values.astype('str')
+          barcode = pd.read_csv(
+            os.path.join(path, "mc", barcode_file),
+            header=barcode_header, usecols=[barcode_column]
+          )[0].values.astype('str')
+          coverage = io.mmread(os.path.join(path, "cov", count_file)).T.tocsr().astype(float)##
+          return cls(feature_name, dataset_name, feature, count, coverage, barcode)
+
 
     def __getitem__(self, items):
         x, y = items
+        if self.feature_name is not "Methy":
+          cov = None
+        else:
+          cov = self.coverage[x,y]
         return SingleData(self.feature_name, self.dataset_name, self.feature[x],
-                          self.count[x, y], self.barcode[y])
+                          self.count[x, y], cov, self.barcode[y])
 
     def __str__(self):
         return "A SingleData object.\n" + \
@@ -163,9 +166,6 @@ class SingleData(object):
         self.feature = self.feature[bool_features]
 
     def rename_features(self, feature):
-        """
-        returning unique features and count/coverage matrices with unique features
-        """
         unique_feature, feature_idx = np.unique(feature, return_index=True)
         if len(feature) != len(unique_feature):
             print("Removing duplicated features.")
@@ -174,8 +174,7 @@ class SingleData(object):
         self.feature = np.array(feature)
 
     def get_data(self):
-        # key of count and feature is the feature_name
-        return {self.feature_name: self.count}, {self.feature_name: self.feature}, self.barcode
+        return {self.feature_name: self.count}, {self.feature_name: self.coverage}, {self.feature_name: self.feature}, self.barcode
 
     def get_dataset_name(self):
         return self.dataset_name
@@ -184,7 +183,7 @@ class SingleData(object):
         if self.count.shape[0] != self.barcode.shape[0]:
             raise ValueError("The dimensions of the count matrix and the barcode array are not consistent.")
         if self.count.shape[1] != self.feature.shape[0]:
-            raise ValueError("The dimensions of the count matrix and the feature array are not consistent.")
+            raise ValueError("The dimensions of the count matrix and the barcode array are not consistent.")
 
 
 class MultiData(object):
@@ -192,38 +191,57 @@ class MultiData(object):
     def __init__(self, *single_data):
         self.data = {}
         for dt in single_data:
-            ct, ft, bc = dt.get_data()
+            ct, co, ft, bc = dt.get_data()
             for mod in ct.keys():
                 if mod not in self.data.keys():
+                  if mod is "Methy":
                     self.data[mod] = {
                         'feature': [ft[mod]],
                         'barcode': [bc],
                         'counts': [ct[mod]],
+                        'coverage': [ct[mod]],
                         'dataset': [dt.get_dataset_name()]
-                    }
+                        }
+                  else: 
+                      self.data[mod] = {
+                        'feature': [ft[mod]],
+                        'barcode': [bc],
+                        'counts': [ct[mod]],
+                        'coverage': None,
+                        'dataset': [dt.get_dataset_name()]
+                      }
                 else:
+                  if mod is "Methy":
+                    self.data[mod]['feature'].append(ft[mod])
+                    self.data[mod]['barcode'].append(bc)
+                    self.data[mod]['counts'].append(ct[mod])
+                    self.data[mod]['coverage'].append(co[mod])
+                    self.data[mod]['dataset'].append(dt.get_dataset_name())
+                  else:
                     self.data[mod]['feature'].append(ft[mod])
                     self.data[mod]['barcode'].append(bc)
                     self.data[mod]['counts'].append(ct[mod])
                     self.data[mod]['dataset'].append(dt.get_dataset_name())
+
         for mod in self.data.keys():
-            self.data[mod] = merge_modality(self.data[mod])
+            self.data[mod] = merge_modality(self.data[mod], mod)
 
     def get_data(self):
         return self.data
 
 
-def merge_modality(dt):
+def merge_modality(dt, modality):
     """
     Merge each modality of data after simply appending *SingleData together
 
-    Returns
-    -------
+    Parameters
+    ----------
     barcode: directly concatenate together
     batch: change dataset names into integers (0,1,2,...)
     feature: keep the common features
-    counts: stack count matrices horizontally (with common features as
+    counts: stack count matrices horizontally (with common features as 
     columns)
+    coverage: if not mc, None; If mc, stack count matrices horizontally
     """
     batch = [np.zeros(x.shape) + i for i, x in enumerate(dt['barcode'])]
     batch = np.concatenate(batch)
@@ -239,9 +257,20 @@ def merge_modality(dt):
         counts += [dt['counts'][i][:, common[2]]]
     counts = sparse.vstack(counts)
 
+    if modality == "Methy":         ### if else
+      coverage = []
+      for i in range(len(dt["coverage"])):
+        common = np.intersect1d(feature, dt['feature'][i], return_indices=True)
+        coverage += [dt['coverage'][i][:, common[2]]]
+      coverage = sparse.vstack(coverage)
+    else: 
+      coverage = None
+
+
     return {
         'feature': feature,
         'counts': counts,
+        'coverage': coverage,
         'barcode': barcode,
         'dataset': batch,
         'dataset_name': dt['dataset']
