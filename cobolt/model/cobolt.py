@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Subset, SubsetRandomSampler
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from typing import List
-
+import torch.optim.lr_scheduler as ls
 
 class Cobolt:
     """
@@ -60,6 +60,7 @@ class Cobolt:
                  hidden_dims: List = None,
                  intercept_adj: bool = True,
                  slope_adj: bool = True,
+                 optim_adj: bool = False,
                  train_prop: float = 1):
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -86,6 +87,10 @@ class Cobolt:
             log=True
         ).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optim_adjust = optim_adj
+        if optim_adj is True:
+            scheduler = ls.ExponentialLR(self.optimizer, gamma = 0.9)
+            self.scheduler = scheduler
 
         self.test_train_split(train_prop)
         self.train_omic = self.get_train_omic()
@@ -136,6 +141,8 @@ class Cobolt:
                     self.optimizer.step()
 
                     this_loss.append((latent_loss.item() + recon_loss.item())/this_size)
+                if self.optim_adjust is True:
+                    self.scheduler.step()
 
             self.history['loss'].append(sum(this_loss))
             self.epoch += 1
