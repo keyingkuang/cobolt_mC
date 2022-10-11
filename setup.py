@@ -27,9 +27,11 @@ setuptools.setup(
         'umap-learn',
         'python-igraph',
         'sklearn',
-        'xgboost'
+        'xgboost',
+        'pandas',
+        'seaborn',
+        'leidenalg'
     ],
-    package_dir={"": "cobolt"},
-    packages=setuptools.find_packages(where=""),
+    packages=setuptools.find_packages(exclude=['cobolt.tests']),
     python_requires=">=3.7",
 )
