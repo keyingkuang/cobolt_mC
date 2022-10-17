@@ -285,7 +285,7 @@ class CoboltModel(nn.Module):
         return latent_loss
 
     def recon_loss_binom(self, x, cov, beta, slope, intercept, latent):
-        logitp = torch.matmul(latent, beta) * (slope + 1) + intercept
+        logitp = torch.matmul(torch.softmax(latent, dim=1), beta) * (slope + 1) + intercept
         p = torch.exp(logitp)/(1+torch.exp(logitp))
         loss = - torch.sum(x*torch.log(p)+(cov-x)*torch.log(1-p))
         return(loss)
